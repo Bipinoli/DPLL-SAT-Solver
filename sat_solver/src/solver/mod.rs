@@ -52,7 +52,7 @@ impl Clause {
 }
 
 #[derive(Debug)]
-struct SATSolver {
+pub struct SATSolver {
     clauses: Vec<Clause>,
     total_literals: usize,
     literal_to_id: HashMap<String, usize>,
