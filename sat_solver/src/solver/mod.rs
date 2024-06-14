@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, usize};
 
 #[derive(Debug, Clone, PartialEq)]
 enum Literal {
@@ -12,11 +12,47 @@ struct Clause {
     disjunction: Vec<Literal>,
 }
 impl Clause {
-    pub fn is_empty(&self) -> bool {
-        !self.disjunction.iter().any(|lit| match lit {
-            Literal::Must | Literal::MustNot => true,
-            _ => false,
-        })
+    pub fn is_empty(&self, is_literal_alive: &Vec<bool>) -> bool {
+        let mut found = false;
+        for (i, alive) in is_literal_alive.iter().enumerate() {
+            if alive.clone() == true {
+                if self.disjunction[i] != Literal::Absent {
+                    if found == true {
+                        return false;
+                    } else {
+                        found = true;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+    pub fn find_unit(&self, is_literal_alive: &Vec<bool>) -> Option<(Literal, usize)> {
+        let mut count = 0;
+        let mut unit: (Literal, usize) = (Literal::Must, 0);
+        for (i, alive) in is_literal_alive.iter().enumerate() {
+            if alive.clone() == true {
+                match self.disjunction[i] {
+                    Literal::MustNot | Literal::Must => {
+                        count += 1;
+                        unit = (self.disjunction[i].clone(), i);
+                    }
+                    _ => (),
+                }
+            }
+        }
+        if count == 1 {
+            return Some(unit);
+        }
+        None
+    }
+    pub fn is_satisfied(&self, values: &Vec<(Literal, usize)>) -> bool {
+        for (lit, item) in values {
+            if self.disjunction[item.clone()] == lit.clone() {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -26,6 +62,8 @@ struct SATSolver {
     total_literals: usize,
     literal_to_id: HashMap<String, usize>,
     id_to_literal: HashMap<usize, String>,
+    values: Vec<(Literal, usize)>,
+    literal_mask: Vec<bool>,
 }
 
 impl SATSolver {
@@ -75,6 +113,8 @@ impl SATSolver {
             total_literals,
             literal_to_id,
             id_to_literal,
+            literal_mask: vec![true; total_literals],
+            values: Vec::new(),
         }
     }
 
@@ -86,8 +126,127 @@ impl SATSolver {
         }
     }
 
-    pub fn dpll() {
-        todo!();
+    fn find_unit_clause(&mut self) -> Option<(Literal, usize)> {
+        for clause in &self.clauses {
+            if let Some(unit) = clause.find_unit(&self.literal_mask) {
+                return Some(unit);
+            }
+        }
+        None
+    }
+
+    fn find_pure_literal(&self) -> Option<(Literal, usize)> {
+        for i in 0..self.total_literals {
+            let val = self.clauses[0].disjunction[i].clone();
+            let mut pure = true;
+            for clause in &self.clauses {
+                if clause.disjunction[i] != val {
+                    pure = false;
+                    break;
+                }
+            }
+            if pure {
+                return Some((val, i));
+            }
+        }
+        None
+    }
+
+    fn is_unsatisfiable(&self) -> bool {
+        for cls in &self.clauses {
+            if cls.is_empty(&self.literal_mask) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    fn is_satisfied(&self) -> bool {
+        for cls in &self.clauses {
+            if !cls.is_satisfied(&self.values) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    pub fn solve(&mut self) -> (bool, Option<Vec<String>>) {
+        let satisfiable = self.dpll();
+        if !satisfiable {
+            return (false, None);
+        }
+        let mut solution: Vec<String> = Vec::new();
+        for (lit, lit_id) in &self.values {
+            let lit_name = self.id_to_literal.get(lit_id).unwrap();
+            match lit {
+                Literal::Must => solution.push(lit_name.clone()),
+                Literal::MustNot => solution.push(format!("!{lit_name}")),
+                Literal::Absent => (),
+            }
+        }
+        return (true, Some(solution));
+    }
+
+    fn dpll(&mut self) -> bool {
+        if self.is_satisfied() {
+            return true;
+        }
+        if self.is_unsatisfiable() {
+            return false;
+        }
+
+        // unit propagation
+        loop {
+            match self.find_unit_clause() {
+                Some(unit_clause) => {
+                    self.values.push(unit_clause.clone());
+                    let (_, item) = unit_clause;
+                    self.literal_mask[item] = false;
+                    if self.is_satisfied() {
+                        return true;
+                    }
+                    if self.is_unsatisfiable() {
+                        return false;
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        // pure-literal elimination
+        loop {
+            match self.find_pure_literal() {
+                Some(pure_literal) => {
+                    self.values.push(pure_literal.clone());
+                    let (_, item) = pure_literal;
+                    self.literal_mask[item] = false;
+                    if self.is_satisfied() {
+                        return true;
+                    }
+                    if self.is_unsatisfiable() {
+                        return false;
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        // choose + backtrack process
+        let mut literal = 0;
+        while self.literal_mask[literal] == false {
+            literal += 1;
+        }
+        self.literal_mask[literal] = false;
+        self.values.push((Literal::Must, literal));
+        if self.dpll() == true {
+            return true;
+        }
+        while self.values.last().unwrap().1 != literal {
+            self.values.pop();
+        }
+        self.values.pop();
+        self.values.push((Literal::MustNot, literal));
+        return self.dpll();
     }
 }
 
@@ -111,5 +270,36 @@ mod test {
         assert_eq!(satSolver.clauses[0].disjunction[0], Literal::Must);
         assert_eq!(satSolver.clauses[0].disjunction[1], Literal::MustNot);
         assert_eq!(satSolver.clauses[0].disjunction[2], Literal::Absent);
+    }
+
+    #[test]
+    fn unit_propagation() {
+        let cnf = vec![
+            vec!["apple"],
+            vec!["!apple", "sugar_cane"],
+            vec!["!sugar_cane", "apple", "!cat"],
+        ];
+        let mut satSolver = SATSolver::parse_cnf(cnf);
+        dbg!(satSolver.solve());
+    }
+
+    fn pure_literal_elimination() {
+        let cnf = vec![
+            vec!["apple", "!cat"],
+            vec!["sugar_cane", "cat"],
+            vec!["!sugar_cane", "apple", "!cat"],
+        ];
+        let satSolver = SATSolver::parse_cnf(cnf);
+        todo!();
+    }
+
+    fn normal() {
+        let cnf = vec![
+            vec!["apple", "!cat"],
+            vec!["!apple", "sugar_cane", "cat"],
+            vec!["!sugar_cane", "apple", "!cat"],
+        ];
+        let satSolver = SATSolver::parse_cnf(cnf);
+        todo!();
     }
 }
