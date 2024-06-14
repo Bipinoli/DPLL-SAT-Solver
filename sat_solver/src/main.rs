@@ -124,6 +124,8 @@ fn main() {
         sodoku_cnf.push(v);
     }
     let mut satSolver = solver::SATSolver::parse_cnf(sodoku_cnf);
-    dbg!(&satSolver);
+    println!("************ Sudoku *************");
+    println!("Total literals: {}", satSolver.total_literals);
+    println!("Total clauses: {}", satSolver.clauses.len());
     dbg!(&satSolver.solve());
 }

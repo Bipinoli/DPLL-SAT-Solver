@@ -8,7 +8,7 @@ enum Literal {
 }
 
 #[derive(Debug)]
-struct Clause {
+pub struct Clause {
     disjunction: Vec<Literal>,
 }
 impl Clause {
@@ -53,8 +53,8 @@ impl Clause {
 
 #[derive(Debug)]
 pub struct SATSolver {
-    clauses: Vec<Clause>,
-    total_literals: usize,
+    pub clauses: Vec<Clause>,
+    pub total_literals: usize,
     literal_to_id: HashMap<String, usize>,
     id_to_literal: HashMap<usize, String>,
     values: Vec<(Literal, usize)>,
@@ -204,7 +204,6 @@ impl SATSolver {
         loop {
             match self.find_unit_clause() {
                 Some(unit_clause) => {
-                    dbg!(&unit_clause);
                     self.values.push(unit_clause.clone());
                     let (_, item) = unit_clause;
                     self.literal_mask[item] = false;
@@ -223,7 +222,6 @@ impl SATSolver {
         loop {
             match self.find_pure_literal() {
                 Some(pure_literal) => {
-                    dbg!(&pure_literal);
                     self.values.push(pure_literal.clone());
                     let (_, item) = pure_literal;
                     self.literal_mask[item] = false;
