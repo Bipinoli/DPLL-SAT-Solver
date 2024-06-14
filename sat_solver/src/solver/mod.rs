@@ -332,4 +332,18 @@ mod test {
         let (satisfiable, _) = satSolver.solve();
         assert_eq!(satisfiable, false);
     }
+
+    #[test]
+    fn complex() {
+        let cnf = vec![
+            vec!["apple", "!cat"],
+            vec!["!apple", "sugar_cane", "cat"],
+            vec!["!sugar_cane", "apple", "!cat"],
+            vec!["cat", "!sugar_cane"],
+        ];
+        let mut satSolver = SATSolver::parse_cnf(cnf);
+        let (satisfiable, solution) = satSolver.solve();
+        assert_eq!(satisfiable, true);
+        assert_eq!(solution, Some(vec!["apple".to_string(), "cat".to_string()]));
+    }
 }
