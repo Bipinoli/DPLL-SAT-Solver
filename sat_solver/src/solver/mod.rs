@@ -13,15 +13,10 @@ struct Clause {
 }
 impl Clause {
     pub fn is_empty(&self, is_literal_alive: &Vec<bool>) -> bool {
-        let mut found = false;
         for (i, alive) in is_literal_alive.iter().enumerate() {
             if alive.clone() == true {
                 if self.disjunction[i] != Literal::Absent {
-                    if found == true {
-                        return false;
-                    } else {
-                        found = true;
-                    }
+                    return false;
                 }
             }
         }
@@ -128,6 +123,9 @@ impl SATSolver {
 
     fn find_unit_clause(&mut self) -> Option<(Literal, usize)> {
         for clause in &self.clauses {
+            if clause.is_satisfied(&self.values) {
+                continue;
+            }
             if let Some(unit) = clause.find_unit(&self.literal_mask) {
                 return Some(unit);
             }
@@ -137,16 +135,23 @@ impl SATSolver {
 
     fn find_pure_literal(&self) -> Option<(Literal, usize)> {
         for i in 0..self.total_literals {
-            let val = self.clauses[0].disjunction[i].clone();
-            let mut pure = true;
+            if self.literal_mask[i] == false {
+                continue;
+            }
+            let mut must = false;
+            let mut must_not = false;
             for clause in &self.clauses {
-                if clause.disjunction[i] != val {
-                    pure = false;
-                    break;
+                match clause.disjunction[i] {
+                    Literal::Must => must = true,
+                    Literal::MustNot => must_not = true,
+                    _ => (),
                 }
             }
-            if pure {
-                return Some((val, i));
+            if must && !must_not {
+                return Some((Literal::Must, i));
+            }
+            if must_not && !must {
+                return Some((Literal::MustNot, i));
             }
         }
         None
@@ -154,7 +159,7 @@ impl SATSolver {
 
     fn is_unsatisfiable(&self) -> bool {
         for cls in &self.clauses {
-            if cls.is_empty(&self.literal_mask) {
+            if !cls.is_satisfied(&self.values) && cls.is_empty(&self.literal_mask) {
                 return true;
             }
         }
@@ -199,6 +204,7 @@ impl SATSolver {
         loop {
             match self.find_unit_clause() {
                 Some(unit_clause) => {
+                    dbg!(&unit_clause);
                     self.values.push(unit_clause.clone());
                     let (_, item) = unit_clause;
                     self.literal_mask[item] = false;
@@ -217,6 +223,7 @@ impl SATSolver {
         loop {
             match self.find_pure_literal() {
                 Some(pure_literal) => {
+                    dbg!(&pure_literal);
                     self.values.push(pure_literal.clone());
                     let (_, item) = pure_literal;
                     self.literal_mask[item] = false;
@@ -237,6 +244,7 @@ impl SATSolver {
             literal += 1;
         }
         self.literal_mask[literal] = false;
+        dbg!(format!("choosing Must in {literal}"));
         self.values.push((Literal::Must, literal));
         if self.dpll() == true {
             return true;
@@ -245,6 +253,7 @@ impl SATSolver {
             self.values.pop();
         }
         self.values.pop();
+        dbg!(format!("choosing MustNot in {literal}"));
         self.values.push((Literal::MustNot, literal));
         return self.dpll();
     }
@@ -280,26 +289,49 @@ mod test {
             vec!["!sugar_cane", "apple", "!cat"],
         ];
         let mut satSolver = SATSolver::parse_cnf(cnf);
-        dbg!(satSolver.solve());
+        let (satisfiable, solution) = satSolver.solve();
+        assert_eq!(satisfiable, true);
+        assert_eq!(
+            solution,
+            Some(vec!["apple".to_string(), "sugar_cane".to_string()])
+        );
     }
 
+    #[test]
     fn pure_literal_elimination() {
         let cnf = vec![
-            vec!["apple", "!cat"],
-            vec!["sugar_cane", "cat"],
-            vec!["!sugar_cane", "apple", "!cat"],
+            vec!["apple", "!cat", "kangaroo"],
+            vec!["sugar_cane", "!cat"],
+            vec!["!sugar_cane", "apple", "eagle"],
         ];
-        let satSolver = SATSolver::parse_cnf(cnf);
-        todo!();
+        let mut satSolver = SATSolver::parse_cnf(cnf);
+        let (satisfiable, solution) = satSolver.solve();
+        assert_eq!(satisfiable, true);
+        assert_eq!(
+            solution,
+            Some(vec!["apple".to_string(), "!cat".to_string()])
+        );
     }
 
-    fn normal() {
+    #[test]
+    fn simple() {
         let cnf = vec![
             vec!["apple", "!cat"],
             vec!["!apple", "sugar_cane", "cat"],
             vec!["!sugar_cane", "apple", "!cat"],
+            vec!["cat", "!sugar_cane"],
         ];
-        let satSolver = SATSolver::parse_cnf(cnf);
-        todo!();
+        let mut satSolver = SATSolver::parse_cnf(cnf);
+        let (satisfiable, solution) = satSolver.solve();
+        assert_eq!(satisfiable, true);
+        assert_eq!(solution, Some(vec!["apple".to_string(), "cat".to_string()]));
+    }
+
+    #[test]
+    fn simple_unsatisfiable() {
+        let cnf = vec![vec!["a"], vec!["!a"]];
+        let mut satSolver = SATSolver::parse_cnf(cnf);
+        let (satisfiable, _) = satSolver.solve();
+        assert_eq!(satisfiable, false);
     }
 }
